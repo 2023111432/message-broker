@@ -1,9 +1,9 @@
 package broker.protocol;
 
 /**
- * 客户端与服务端之间的命令类型（一帧一条 JSON 或「长度 + JSON」）。
+ * 客户端与服务端之间的命令类型。
  * <p>
- * 对应 docs/项目分工与实现计划.md 中的最小命令集。
+ * 帧格式与 JSON 字段见 <b>docs/协议说明.md</b>（v1.0，一行一 JSON + {@code \n} 结尾）。
  * </p>
  */
 public enum Command {
@@ -37,7 +37,9 @@ public enum Command {
      * @throws IllegalArgumentException 未知命令
      */
     public static Command fromString(String value) {
-        // TODO: 实现解析，如 Command.valueOf(value.toUpperCase())
-        throw new UnsupportedOperationException("TODO: implement fromString");
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("command type is blank");
+        }
+        return Command.valueOf(value.trim().toUpperCase());
     }
 }

@@ -1,11 +1,16 @@
 package broker;
 
+import broker.protocol.Command;
 import broker.protocol.Message;
+import broker.protocol.ProtocolCodec;
 
+import java.io.IOException;
 import java.net.Socket;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * 单个客户端连接的状态封装。
@@ -15,15 +20,20 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ClientSession {
 
+    private static final Logger LOG = Logger.getLogger(ClientSession.class.getName());
+
     /** 客户端唯一标识，由 REGISTER 命令设置 */
     private volatile String clientId;
 
     private final Socket socket;
 
+    /** 写 Socket 时加锁，防止 MessageDispatcher 并发 push 导致帧交叉 */
+    private final Object writeLock = new Object();
+
     /** 本 Session 已订阅的主题集合 */
     private final Set<String> subscribedTopics;
 
-    /** 最后一次收到 HEARTBEAT 的时间戳（毫秒） */
+    /** 最后一次收到任意有效帧的时间戳（毫秒） */
     private volatile long lastHeartbeatMillis;
 
     public ClientSession(Socket socket) {
@@ -34,45 +44,50 @@ public class ClientSession {
 
     /**
      * 绑定客户端 ID（REGISTER 成功后调用）。
+     * 协议约定：若已注册则忽略第二次 REGISTER。
      */
     public void setClientId(String clientId) {
-        // TODO: 校验非空、是否重复注册等
-        this.clientId = clientId;
+        if (clientId == null || clientId.isBlank()) {
+            throw new IllegalArgumentException("clientId must not be blank");
+        }
+        if (this.clientId != null) {
+            LOG.info(() -> "ignore duplicate REGISTER from " + this.clientId);
+            return;
+        }
+        this.clientId = clientId.trim();
     }
 
     public String getClientId() {
         return clientId;
     }
 
+    /** 是否已完成 REGISTER */
+    public boolean isRegistered() {
+        return clientId != null;
+    }
+
     public Socket getSocket() {
         return socket;
     }
 
-    /**
-     * 记录本 Session 订阅了一个 topic。
-     */
     public void addSubscription(String topic) {
-        // TODO: 校验 topic 非空
-        subscribedTopics.add(topic);
+        if (topic == null || topic.isBlank()) {
+            throw new IllegalArgumentException("topic must not be blank");
+        }
+        subscribedTopics.add(topic.trim());
     }
 
-    /**
-     * 取消本 Session 对某 topic 的订阅。
-     */
     public void removeSubscription(String topic) {
-        subscribedTopics.remove(topic);
+        if (topic != null) {
+            subscribedTopics.remove(topic);
+        }
     }
 
-    /**
-     * @return 不可变的已订阅 topic 快照
-     */
     public Set<String> getSubscribedTopics() {
         return Collections.unmodifiableSet(subscribedTopics);
     }
 
-    /**
-     * 更新最后心跳时间（收到 HEARTBEAT 时调用）。
-     */
+    /** 收到任意有效帧时更新（含 HEARTBEAT、PUBLISH 等） */
     public void touchHeartbeat() {
         lastHeartbeatMillis = System.currentTimeMillis();
     }
@@ -83,26 +98,46 @@ public class ClientSession {
 
     /**
      * 向客户端推送一条消息（封装为 PUSH 命令帧）。
-     * <p>写 Socket 时需对本 Session 加锁，避免并发写导致帧乱序。</p>
-     *
-     * @param message 待推送的业务消息
      */
     public void push(Message message) {
-        // TODO: 使用 ProtocolCodec 编码 PUSH 命令，写入 socket.getOutputStream()
+        synchronized (writeLock) {
+            if (!isOpen()) {
+                return;
+            }
+            try {
+                ProtocolCodec.ProtocolFrame frame = new ProtocolCodec.ProtocolFrame();
+                frame.setType(Command.PUSH);
+                frame.setMessage(message);
+                ProtocolCodec.writeFrame(socket.getOutputStream(), frame);
+            } catch (IOException e) {
+                LOG.log(Level.WARNING, "push failed for client " + clientId, e);
+                closeQuietly();
+            }
+        }
     }
 
-    /**
-     * 关闭连接并释放资源。
-     */
     public void close() {
-        // TODO: 关闭 socket 输入/输出流及 socket 本身
+        synchronized (writeLock) {
+            closeQuietly();
+        }
     }
 
-    /**
-     * @return 连接是否仍然可用
-     */
+    private void closeQuietly() {
+        try {
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
+        } catch (IOException e) {
+            LOG.log(Level.FINE, "close socket", e);
+        }
+    }
+
     public boolean isOpen() {
-        // TODO: 根据 socket 状态判断
-        return socket != null && !socket.isClosed();
+        return socket != null && socket.isConnected() && !socket.isClosed();
+    }
+
+    @Override
+    public String toString() {
+        return "ClientSession{clientId='" + clientId + "', open=" + isOpen() + "}";
     }
 }

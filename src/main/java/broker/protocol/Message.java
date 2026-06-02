@@ -3,7 +3,7 @@ package broker.protocol;
 /**
  * 业务消息体，Publisher 与 Subscriber 之间传递的数据单元。
  * <p>
- * 字段约定见 docs/项目分工与实现计划.md：
+ * 字段约定见 <b>docs/协议说明.md</b> §5：
  * </p>
  * <ul>
  *   <li>{@code topic} — 主题，如 {@code network.alert}</li>
