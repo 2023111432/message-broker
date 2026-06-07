@@ -1,31 +1,32 @@
 package client;
 
+import broker.protocol.Command;
+import broker.protocol.ProtocolCodec;
+
 import java.io.IOException;
 
-// SubscriberClient.java
 public class SubscriberClient extends MessageClient {
-    private MessageListener listener;
 
     public void subscribe(String topic, MessageListener listener) throws IOException {
-        this.listener = listener;
-        out.println("SUBSCRIBE " + topic + " " + getClientId());
-        String resp = in.readLine();
-        if (resp.startsWith("SUBSCRIBED")) {
-            // 启动接收线程
-            new Thread(() -> {
-                try {
-                    String line;
-                    while ((line = in.readLine()) != null) {
-                        if (line.startsWith("MSG")) {
-                            String[] parts = line.split(" ", 3);
-                            if (parts.length >= 3) {
-                                listener.onMessage(parts[1], parts[2]);
-                            }
-                        }
+        sendSubscribe(topic);
+        Thread receiver = new Thread(() -> {
+            try {
+                while (socket != null && socket.isConnected() && !socket.isClosed()) {
+                    ProtocolCodec.ProtocolFrame frame = ProtocolCodec.readFrame(in);
+                    if (frame == null) {
+                        break;
                     }
-                } catch (IOException e) { /* handle */ }
-            }).start();
-        }
+                    if (frame.getType() == Command.PUSH && frame.getMessage() != null) {
+                        var msg = frame.getMessage();
+                        listener.onMessage(msg.getTopic(), msg.getPayload());
+                    }
+                }
+            } catch (IOException ignored) {
+                // connection closed
+            }
+        }, "subscriber-recv-" + getClientId());
+        receiver.setDaemon(true);
+        receiver.start();
     }
 
     public interface MessageListener {

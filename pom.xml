@@ -9,9 +9,64 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.source>22</maven.compiler.source>
-        <maven.compiler.target>22</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <jackson.version>2.17.2</jackson.version>
     </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <!-- 终端1：启动 Broker，端口 8888（与 QuickTest 一致） -->
+                    <execution>
+                        <id>broker</id>
+                        <configuration>
+                            <mainClass>broker.BrokerMain</mainClass>
+                            <arguments>
+                                <argument>9090</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <!-- 终端2：联调测试（需 Broker 已启动） -->
+                    <execution>
+                        <id>quicktest</id>
+                        <configuration>
+                            <mainClass>demo.QuickTest</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 终端2：进销存演示（需 Broker 已启动） -->
+                    <execution>
+                        <id>pssdemo</id>
+                        <configuration>
+                            <mainClass>demo.PssDemo</mainClass>
+                        </configuration>
+                    </execution>
+                    <!-- 终端2：性能测试（需 Broker 已启动） -->
+                    <execution>
+                        <id>perf</id>
+                        <configuration>
+                            <mainClass>demo.PerformanceTest</mainClass>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <mainClass>broker.BrokerMain</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

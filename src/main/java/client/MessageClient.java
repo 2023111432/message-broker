@@ -1,23 +1,27 @@
 package client;
 
-import java.io.BufferedReader;
+import broker.protocol.Command;
+import broker.protocol.ProtocolCodec;
+
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.Socket;
 
 public abstract class MessageClient {
     protected Socket socket;
-    protected PrintWriter out;
-    protected BufferedReader in;
-    protected String clientId;   // 新增：客户端唯一标识
+    protected InputStream in;
+    protected OutputStream out;
+    protected String clientId;
 
     public void connect(String host, int port) throws IOException {
         socket = new Socket(host, port);
-        out = new PrintWriter(socket.getOutputStream(), true);
-        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        // 自动生成一个默认的 clientId（可自行修改规则）
-        this.clientId = socket.getLocalSocketAddress().toString() + "_" + System.currentTimeMillis();
+        in = socket.getInputStream();
+        out = socket.getOutputStream();
+        if (clientId == null || clientId.isBlank()) {
+            clientId = "client-" + System.currentTimeMillis();
+        }
+        sendRegister();
     }
 
     public void setClientId(String clientId) {
@@ -29,6 +33,30 @@ public abstract class MessageClient {
     }
 
     public void disconnect() throws IOException {
-        if (socket != null) socket.close();
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
+    }
+
+    protected void sendRegister() throws IOException {
+        ProtocolCodec.ProtocolFrame frame = new ProtocolCodec.ProtocolFrame();
+        frame.setType(Command.REGISTER);
+        frame.setClientId(clientId);
+        ProtocolCodec.writeFrame(out, frame);
+    }
+
+    protected void sendSubscribe(String topic) throws IOException {
+        ProtocolCodec.ProtocolFrame frame = new ProtocolCodec.ProtocolFrame();
+        frame.setType(Command.SUBSCRIBE);
+        frame.setTopic(topic);
+        ProtocolCodec.writeFrame(out, frame);
+    }
+
+    protected void sendPublish(String topic, String payload) throws IOException {
+        broker.protocol.Message message = new broker.protocol.Message(topic, payload);
+        ProtocolCodec.ProtocolFrame frame = new ProtocolCodec.ProtocolFrame();
+        frame.setType(Command.PUBLISH);
+        frame.setMessage(message);
+        ProtocolCodec.writeFrame(out, frame);
     }
 }
